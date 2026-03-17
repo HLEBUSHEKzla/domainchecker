@@ -13,7 +13,6 @@ return new class extends Migration
             $table->index('last_status');
             $table->index('last_ssl_expires_at');
             $table->index('name');
-            $table->index('domain');
         });
 
         Schema::table('domain_checks', function (Blueprint $table) {
@@ -30,7 +29,6 @@ return new class extends Migration
             $table->dropIndex(['last_status']);
             $table->dropIndex(['last_ssl_expires_at']);
             $table->dropIndex(['name']);
-            $table->dropIndex(['domain']);
         });
 
         Schema::table('domain_checks', function (Blueprint $table) {
