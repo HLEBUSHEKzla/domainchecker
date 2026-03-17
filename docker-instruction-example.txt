@@ -1,0 +1,164 @@
+domainchecker
+-/src
+-/docker
+--/nginx
+---default.conf
+--/php
+---Dockerfile
+---supervisord.conf
+-docker-compose.yml
+
+##########################
+
+docker-compose.yml:
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    container_name: domain_app
+    volumes:
+      - ./src:/var/www/src
+    networks:
+      - domain_network
+
+  nginx:
+    image: nginx:alpine
+    container_name: domain_nginx
+    ports:
+      - "8098:80"
+    volumes:
+      - ./src:/var/www/src
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - app
+    networks:
+      - domain_network
+
+  db:
+    image: mysql:8.0
+    container_name: domain_db
+    environment:
+      MYSQL_DATABASE: domainchecker
+      MYSQL_ROOT_PASSWORD: root
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - domain_network
+
+  redis:
+    image: redis:alpine
+    container_name: domain_redis
+    networks:
+      - domain_network
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    container_name: domain_worker
+    restart: unless-stopped
+    command: supervisord -c /etc/supervisor/supervisord.conf
+    volumes:
+      - ./src:/var/www/src
+    depends_on:
+      - app
+      - redis
+    networks:
+      - domain_network
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    container_name: domain_scheduler
+    restart: unless-stopped
+    command: >
+      sh -c "while [ true ]; do
+        php /var/www/src/artisan schedule:run --verbose --no-interaction;
+        sleep 60;
+      done"
+    volumes:
+      - ./src:/var/www/src
+    depends_on:
+      - app
+    networks:
+      - domain_network
+
+networks:
+  domain_network:
+    driver: bridge
+
+volumes:
+  db_data:
+
+docker/nginx/default.conf:
+server {
+    listen 80;
+    server_name _;
+
+    root /var/www/src/public;
+    index index.php;
+
+    client_max_body_size 20M;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location ~ \.php$ {
+        fastcgi_pass app:9000;
+        include fastcgi_params;
+        # $document_root тут буде /var/www/src/public
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+    }
+
+    error_log  /var/log/nginx/error.log;
+    access_log /var/log/nginx/access.log;
+}
+
+docker/php/Dockerfile:
+FROM php:8.3-fpm
+
+
+RUN apt-get update && apt-get install -y \
+    git curl libpng-dev libonig-dev libxml2-dev zip unzip libzip-dev \
+    supervisor
+
+RUN apt-get clean && rm -rf /var/lib/apt/lists/*
+
+
+RUN docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip
+RUN pecl install redis && docker-php-ext-enable redis
+
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+RUN echo '[supervisord]' > /etc/supervisor/supervisord.conf && \
+    echo 'nodaemon=true' >> /etc/supervisor/supervisord.conf && \
+    echo 'user=root' >> /etc/supervisor/supervisord.conf && \
+    echo '' >> /etc/supervisor/supervisord.conf && \
+    echo '[program:laravel-worker]' >> /etc/supervisor/supervisord.conf && \
+    echo 'process_name=%(program_name)s_%(process_num)02d' >> /etc/supervisor/supervisord.conf && \
+    echo 'command=php /var/www/src/artisan queue:work redis --sleep=3 --tries=3' >> /etc/supervisor/supervisord.conf && \
+    echo 'autostart=true' >> /etc/supervisor/supervisord.conf && \
+    echo 'autorestart=true' >> /etc/supervisor/supervisord.conf && \
+    echo 'user=www-data' >> /etc/supervisor/supervisord.conf && \
+    echo 'numprocs=2' >> /etc/supervisor/supervisord.conf && \
+    echo 'redirect_stderr=true' >> /etc/supervisor/supervisord.conf && \
+    echo 'stdout_logfile=/var/www/src/storage/logs/worker.log' >> /etc/supervisor/supervisord.conf
+WORKDIR /var/www/src
+
+docker/php/supervisord.conf:
+[supervisord]
+nodaemon=true
+user=root
+
+[program:laravel-worker]
+process_name=%(program_name)s_%(process_num)02d
+command=php /var/www/src/artisan queue:work redis --sleep=3 --tries=3
+autostart=true
+autorestart=true
+user=www-data
+numprocs=2
+redirect_stderr=true
+stdout_logfile=/var/www/src/storage/logs/worker.log
