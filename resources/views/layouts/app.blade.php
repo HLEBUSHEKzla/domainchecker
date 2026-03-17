@@ -7,6 +7,10 @@
     <title>{{ config('app.name', 'Laravel') }}</title>
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" integrity="sha384-JcKb8q3iqJ61gNV9KGb8thSsNjpSL0n8PARn9HuZOnIxN0hoP+VmmDGMN5t9UJ0Z" crossorigin="anonymous">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+    @auth
+        <meta name="api-token" content="{{ auth()->user()->createToken('api-token')->plainTextToken }}">
+    @endauth
 </head>
 <body>
     <div id="app">
@@ -19,24 +23,42 @@
                     <span class="navbar-toggler-icon"></span>
                 </button>
                 <div class="collapse navbar-collapse" id="navbarSupportedContent">
-                    <ul class="navbar-nav mr-auto" id="main-nav" style="display: none;">
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ route('dashboard') }}">Dashboard</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ route('domains.index') }}">Domains</a>
-                        </li>
+                    <ul class="navbar-nav mr-auto">
+                        @auth
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ route('dashboard') }}">Dashboard</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ route('domains.index') }}">Domains</a>
+                            </li>
+                        @endauth
                     </ul>
                     <ul class="navbar-nav ml-auto">
-                        <li class="nav-item" id="logout-link" style="display: none;">
-                            <a class="nav-link" href="#" onclick="event.preventDefault(); logout();">Logout</a>
-                        </li>
-                        <li class="nav-item" id="login-link">
-                            <a class="nav-link" href="{{ route('login') }}">{{ __('Login') }}</a>
-                        </li>
-                        <li class="nav-item" id="register-link">
-                            <a class="nav-link" href="{{ route('register') }}">{{ __('Register') }}</a>
-                        </li>
+                        @guest
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ route('login') }}">{{ __('Login') }}</a>
+                            </li>
+                            @if (Route::has('register'))
+                                <li class="nav-item">
+                                    <a class="nav-link" href="{{ route('register') }}">{{ __('Register') }}</a>
+                                </li>
+                            @endif
+                        @else
+                            <li class="nav-item dropdown">
+                                <a id="navbarDropdown" class="nav-link dropdown-toggle" href="#" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" v-pre>
+                                    {{ Auth::user()->name }}
+                                </a>
+                                <div class="dropdown-menu dropdown-menu-right" aria-labelledby="navbarDropdown">
+                                    <a class="dropdown-item" href="{{ route('logout') }}"
+                                       onclick="event.preventDefault(); localStorage.removeItem('api_token'); document.getElementById('logout-form').submit();">
+                                        {{ __('Logout') }}
+                                    </a>
+                                    <form id="logout-form" action="{{ route('logout') }}" method="POST" class="d-none">
+                                        @csrf
+                                    </form>
+                                </div>
+                            </li>
+                        @endguest
                     </ul>
                 </div>
             </div>
@@ -56,39 +78,16 @@
 
     <script>
         $(document).ready(function() {
-            const apiToken = localStorage.getItem('api_token');
+            const apiToken = $('meta[name="api-token"]').attr('content');
             if (apiToken) {
-                $('#main-nav').show();
-                $('#logout-link').show();
-                $('#login-link').hide();
-                $('#register-link').hide();
                 $.ajaxSetup({
                     headers: {
                         'Authorization': 'Bearer ' + apiToken,
                         'Accept': 'application/json'
                     }
                 });
-            } else {
-                if (window.location.pathname !== '/login' && window.location.pathname !== '/register') {
-                    window.location.href = "{{ route('login') }}";
-                }
             }
         });
-
-        function logout() {
-            $.ajax({
-                url: '/api/logout',
-                method: 'POST',
-                success: function() {
-                    localStorage.removeItem('api_token');
-                    window.location.href = "{{ route('login') }}";
-                },
-                error: function() {
-                    localStorage.removeItem('api_token');
-                    window.location.href = "{{ route('login') }}";
-                }
-            });
-        }
     </script>
 
     @yield('scripts')

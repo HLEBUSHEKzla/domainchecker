@@ -4,8 +4,8 @@ use App\Http\Controllers\Web\DashboardController;
 use App\Http\Controllers\Web\DomainController;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Http\Request;
 
-// Redirect root to login
 Route::get('/', function () {
     return redirect()->route('login');
 });
@@ -37,7 +37,16 @@ Route::middleware(['auth'])->group(function () {
 });
 
 // This will handle the POST request from Laravel's default logout form
-Route::post('/logout', function () {
+Route::post('/logout', function (Request $request) {
+    // Invalidate the session
     Auth::logout();
+    $request->session()->invalidate();
+    $request->session()->regenerateToken();
+
+    // Invalidate the API token if it exists
+    if ($request->user()) {
+        $request->user()->tokens()->delete();
+    }
+
     return redirect('/login');
 })->name('logout');
