@@ -6,16 +6,14 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         Schema::table('domains', function (Blueprint $table) {
             $table->index('next_check_at');
             $table->index('last_status');
             $table->index('last_ssl_expires_at');
-            $table->index(['name', 'domain']); // Composite index for search
+            $table->index('name');
+            $table->index('domain');
         });
 
         Schema::table('domain_checks', function (Blueprint $table) {
@@ -25,16 +23,14 @@ return new class extends Migration
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::table('domains', function (Blueprint $table) {
             $table->dropIndex(['next_check_at']);
             $table->dropIndex(['last_status']);
             $table->dropIndex(['last_ssl_expires_at']);
-            $table->dropIndex(['domains_name_domain_index']); // Drop composite index
+            $table->dropIndex(['name']);
+            $table->dropIndex(['domain']);
         });
 
         Schema::table('domain_checks', function (Blueprint $table) {
